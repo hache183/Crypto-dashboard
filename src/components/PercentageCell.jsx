@@ -1,6 +1,7 @@
+import { memo } from 'react';
 import { formatCompactPercentage, getPercentageColorClass, getPercentageBackgroundClass } from '../utils/formatters';
 
-export default function PercentageCell({ value, timeframe }) {
+export default memo(function PercentageCell({ value, timeframe }) {
   const colorClass = getPercentageColorClass(value);
   const bgClass = getPercentageBackgroundClass(value);
 
@@ -14,4 +15,4 @@ export default function PercentageCell({ value, timeframe }) {
       </span>
     </div>
   );
-}
+});

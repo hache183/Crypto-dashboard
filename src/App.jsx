@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useCryptoData } from './hooks/useCryptoData';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import Header from './components/Header';
@@ -7,6 +7,8 @@ import CryptoTable from './components/CryptoTable';
 import LoadingSpinner from './components/LoadingSpinner';
 import DebugPanel from './components/DebugPanel';
 import HelpPanel from './components/HelpPanel';
+import SettingsPanel from './components/SettingsPanel';
+import AlertPanel from './components/AlertPanel';
 
 function App() {
   const { 
@@ -23,10 +25,16 @@ function App() {
     setSearchQuery,
     sortConfig,
     requestSort,
+    toggleWatchlist,
+    isInWatchlist,
+    watchlistCount,
+    alerts,
   } = useCryptoData();
 
   const [showDebug, setShowDebug] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showAlerts, setShowAlerts] = useState(true);
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
@@ -34,6 +42,9 @@ function App() {
     onToggleDebug: () => setShowDebug(prev => !prev),
     onClearSearch: () => setSearchQuery(''),
   });
+
+  // Memoize filtered alerts to prevent re-renders
+  const activeAlerts = useMemo(() => alerts, [alerts]);
 
   // Show loading spinner only on initial load
   if (loading && !coins.length) {
@@ -47,6 +58,8 @@ function App() {
         onRefresh={refresh}
         countdown={countdown}
         onShowHelp={() => setShowHelp(true)}
+        onShowSettings={() => setShowSettings(true)}
+        alertCount={activeAlerts.length}
       />
 
       <FilterBar 
@@ -55,6 +68,7 @@ function App() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         totalCoins={coins.length}
+        watchlistCount={watchlistCount}
       />
       
       <main className="max-w-[1800px] mx-auto px-4 py-6">
@@ -66,17 +80,21 @@ function App() {
               <h3 className="text-blue-400 font-medium mb-1">
                 Advanced Tracking Active
               </h3>
-              <p className="text-sm text-gray-300">
-                Price & volume changes tracked across 14 timeframes. 
-                Click column headers to sort. Use filters to narrow down results.
-                <span className="text-blue-400 ml-1">
+              <div className="text-sm text-gray-300 flex items-center gap-4 flex-wrap">
+                <span>
+                  Price & volume changes tracked across 14 timeframes
+                </span>
+                <span className="text-blue-400">
                   Cycle #{snapshotStats.cycleCount}
                 </span>
-              </p>
+                <span className="text-yellow-400">
+                  ⭐ {watchlistCount} in watchlist
+                </span>
+              </div>
             </div>
             <button
               onClick={() => setShowHelp(true)}
-              className="text-blue-400 hover:text-blue-300 text-sm underline"
+              className="text-blue-400 hover:text-blue-300 text-sm underline whitespace-nowrap"
             >
               View shortcuts
             </button>
@@ -90,9 +108,19 @@ function App() {
             error={error}
             sortConfig={sortConfig}
             onSort={requestSort}
+            isInWatchlist={isInWatchlist}
+            onToggleWatchlist={toggleWatchlist}
           />
         </div>
       </main>
+
+      {/* Alert Panel */}
+      {showAlerts && activeAlerts.length > 0 && (
+        <AlertPanel 
+          alerts={activeAlerts}
+          onClose={() => setShowAlerts(false)}
+        />
+      )}
 
       {/* Debug Panel */}
       <DebugPanel 
@@ -106,6 +134,13 @@ function App() {
       <HelpPanel 
         isVisible={showHelp}
         onClose={() => setShowHelp(false)}
+      />
+
+      {/* Settings Panel */}
+      <SettingsPanel 
+        isVisible={showSettings}
+        onClose={() => setShowSettings(false)}
+        coins={coins}
       />
     </div>
   );

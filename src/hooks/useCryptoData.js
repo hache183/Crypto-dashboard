@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { coinGeckoService } from '../services/coinGeckoService';
 import { snapshotManager } from '../services/snapshotManager';
 import { API_CONFIG, FILTER_OPTIONS, DEFAULT_WATCHLIST } from '../constants/config';
+import { watchlistManager } from '../services/watchlistManager';
+import { alertService } from '../services/alertService';
 
 export function useCryptoData() {
   const [allCoins, setAllCoins] = useState([]);
@@ -179,7 +181,28 @@ export function useCryptoData() {
 
   const snapshotStats = snapshotManager.getStats();
 
-  return {
+  // Watchlist management
+  const toggleWatchlist = useCallback((coinId) => {
+    const added = watchlistManager.toggle(coinId);
+    // Force re-filter
+    setAllCoins(prev => [...prev]);
+    return added;
+  }, []);
+
+  const isInWatchlist = useCallback((coinId) => {
+    return watchlistManager.has(coinId);
+  }, []);
+
+  // Check alerts after fetch
+  useEffect(() => {
+    if (allCoins.length > 0) {
+      alertService.checkAlerts(allCoins);
+    }
+  }, [allCoins]);
+
+  const alerts = alertService.getRecent(5);
+
+return {
     coins: filteredCoins,
     loading,
     error,
@@ -195,5 +218,11 @@ export function useCryptoData() {
     // Sort controls
     sortConfig,
     requestSort,
+    // Watchlist controls
+    toggleWatchlist,
+    isInWatchlist,
+    watchlistCount: watchlistManager.count(),
+    // Alerts
+    alerts,
   };
 }
