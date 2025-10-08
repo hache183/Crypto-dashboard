@@ -1,16 +1,20 @@
 import { exportService } from '../services/exportService';
 import { TIMEFRAMES } from '../constants/config';
 
-export default function SettingsPanel({ isVisible, onClose, coins, onExportCSV, onExportJSON }) {
+export default function SettingsPanel({ isVisible, onClose, coins, onExportCSV, onExportJSON, onShowToast }) {
   if (!isVisible) return null;
 
-  const handleExportCSV = () => {
-    exportService.downloadCSV(coins, TIMEFRAMES);
-  };
+    const handleExportCSV = () => {
+        exportService.downloadCSV(coins, TIMEFRAMES);
+        onShowToast?.('CSV exported successfully!', 'success');
+        onClose();
+      };
 
-  const handleExportJSON = () => {
-    exportService.downloadJSON(coins);
-  };
+      const handleExportJSON = () => {
+        exportService.downloadJSON(coins);
+        onShowToast?.('JSON exported successfully!', 'success');
+        onClose();
+      };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>

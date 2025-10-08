@@ -5,6 +5,7 @@ import PercentageCell from './PercentageCell';
 import WatchlistButton from './WatchlistButton';
 import VolumeIndicator from './VolumeIndicator';
 import MiniSparkline from './MiniSparkline';
+import TableSkeleton from './TableSkeleton';
 
 export default memo(function CryptoTable({ 
   coins, 
@@ -26,13 +27,9 @@ export default memo(function CryptoTable({
     onSort(key);
   };
 
-  if (loading && !coins.length) {
-    return (
-      <div className="text-center py-12">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-crypto-blue"></div>
-      </div>
-    );
-  }
+      if (loading && !coins.length) {
+        return <TableSkeleton rows={10} />;
+      }
 
   if (error) {
     return (

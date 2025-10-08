@@ -99,3 +99,229 @@ input:focus {
 button.bg-crypto-blue {
   box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
 }
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  /* Header adjustments */
+  header .max-w-7xl {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  header .flex.items-center.gap-4 {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  /* Filter bar mobile */
+  .bg-crypto-dark .max-w-\[1800px\] {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+
+  .bg-crypto-dark .flex.items-center.gap-2 {
+    flex-wrap: wrap;
+  }
+
+  /* Search bar full width on mobile */
+  .bg-crypto-dark input[type="text"] {
+    width: 100%;
+  }
+
+  /* Hide less important columns on mobile */
+  table th:nth-child(n+4):nth-child(-n+17),
+  table td:nth-child(n+4):nth-child(-n+17) {
+    display: none;
+  }
+
+  /* Keep only essential columns: Rank, Coin, Price, 24h, Action */
+  table th:nth-child(18),
+  table td:nth-child(18),
+  table th:nth-child(19),
+  table td:nth-child(19),
+  table th:nth-child(20),
+  table td:nth-child(20),
+  table th:nth-child(21),
+  table td:nth-child(21) {
+    display: table-cell;
+  }
+
+  /* Adjust padding on mobile */
+  main {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  /* Stack debug panel on mobile */
+  .fixed.bottom-4.right-4 {
+    right: 0.5rem;
+    bottom: 0.5rem;
+    max-width: calc(100vw - 1rem);
+  }
+}
+
+@media (max-width: 640px) {
+  /* Further mobile optimizations */
+  h1 {
+    font-size: 1.25rem;
+  }
+
+  button {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+  }
+
+  /* Make alert panel full width on small screens */
+  .fixed.top-20.right-4 {
+    left: 0.5rem;
+    right: 0.5rem;
+    width: auto;
+  }
+}
+
+/* Tablet adjustments */
+@media (min-width: 769px) and (max-width: 1024px) {
+  /* Show more columns on tablet */
+  table th:nth-child(n+4):nth-child(-n+10),
+  table td:nth-child(n+4):nth-child(-n+10) {
+    display: table-cell;
+  }
+}
+
+/* Print styles */
+@media print {
+  /* Hide interactive elements */
+  button,
+  .fixed {
+    display: none !important;
+  }
+
+  /* Optimize table for printing */
+  table {
+    font-size: 0.75rem;
+  }
+
+  body {
+    background-color: white;
+    color: black;
+  }
+}
+
+/* Advanced Animations */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInBottom {
+  from {
+    opacity: 0;
+    transform: translateY(50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.3s ease-out;
+}
+
+.animate-slide-in-bottom {
+  animation: slideInBottom 0.3s ease-out;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.2s ease-out;
+}
+
+/* Smooth transitions for all interactive elements */
+button,
+a,
+input,
+select {
+  transition: all 0.2s ease;
+}
+
+/* Glow effect for important buttons */
+.glow-on-hover:hover {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+}
+
+/* Skeleton loading animation improvements */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    to right,
+    #1e293b 0%,
+    #334155 50%,
+    #1e293b 100%
+  );
+  background-size: 2000px 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Notification badge pulse */
+@keyframes badge-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+.badge-pulse {
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+
+/* Focus visible for accessibility */
+*:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Smooth scroll behavior */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Selection color */
+::selection {
+  background-color: rgba(59, 130, 246, 0.3);
+  color: white;
+}

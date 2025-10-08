@@ -1,14 +1,17 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useCryptoData } from './hooks/useCryptoData';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useToast } from './hooks/useToast';
 import Header from './components/Header';
 import FilterBar from './components/FilterBar';
+import StatsSummary from './components/StatsSummary';
 import CryptoTable from './components/CryptoTable';
 import LoadingSpinner from './components/LoadingSpinner';
 import DebugPanel from './components/DebugPanel';
 import HelpPanel from './components/HelpPanel';
 import SettingsPanel from './components/SettingsPanel';
 import AlertPanel from './components/AlertPanel';
+import Toast from './components/Toast';
 
 function App() {
   const { 
@@ -31,10 +34,22 @@ function App() {
     alerts,
   } = useCryptoData();
 
+  const { toasts, showToast, removeToast } = useToast();
+
   const [showDebug, setShowDebug] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAlerts, setShowAlerts] = useState(true);
+
+  // Handle watchlist toggle with toast feedback
+  const handleToggleWatchlist = useCallback((coinId) => {
+    const added = toggleWatchlist(coinId);
+    showToast(
+      added ? '⭐ Added to watchlist' : 'Removed from watchlist',
+      'success',
+      2000
+    );
+  }, [toggleWatchlist, showToast]);
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
@@ -43,7 +58,7 @@ function App() {
     onClearSearch: () => setSearchQuery(''),
   });
 
-  // Memoize filtered alerts to prevent re-renders
+  // Memoize active alerts
   const activeAlerts = useMemo(() => alerts, [alerts]);
 
   // Show loading spinner only on initial load
@@ -70,6 +85,13 @@ function App() {
         totalCoins={coins.length}
         watchlistCount={watchlistCount}
       />
+
+      {/* Stats Summary */}
+      {!loading && coins.length > 0 && (
+        <div className="max-w-[1800px] mx-auto px-4 py-4">
+          <StatsSummary coins={coins} />
+        </div>
+      )}
       
       <main className="max-w-[1800px] mx-auto px-4 py-6">
         {/* Info Banner */}
@@ -78,17 +100,17 @@ function App() {
             <span className="text-2xl">ℹ️</span>
             <div className="flex-1">
               <h3 className="text-blue-400 font-medium mb-1">
-                Advanced Tracking Active
+                Professional Crypto Tracking Dashboard
               </h3>
               <div className="text-sm text-gray-300 flex items-center gap-4 flex-wrap">
                 <span>
-                  Price & volume changes tracked across 14 timeframes
+                  14 timeframes • Volume analytics • Real-time alerts
                 </span>
                 <span className="text-blue-400">
                   Cycle #{snapshotStats.cycleCount}
                 </span>
                 <span className="text-yellow-400">
-                  ⭐ {watchlistCount} in watchlist
+                  ⭐ {watchlistCount} watchlist
                 </span>
               </div>
             </div>
@@ -96,11 +118,12 @@ function App() {
               onClick={() => setShowHelp(true)}
               className="text-blue-400 hover:text-blue-300 text-sm underline whitespace-nowrap"
             >
-              View shortcuts
+              View guide
             </button>
           </div>
         </div>
 
+        {/* Main Table */}
         <div className="bg-crypto-dark rounded-lg shadow-xl overflow-hidden">
           <CryptoTable 
             coins={coins}
@@ -109,9 +132,26 @@ function App() {
             sortConfig={sortConfig}
             onSort={requestSort}
             isInWatchlist={isInWatchlist}
-            onToggleWatchlist={toggleWatchlist}
+            onToggleWatchlist={handleToggleWatchlist}
           />
         </div>
+
+        {/* Empty State */}
+        {!loading && coins.length === 0 && searchQuery && (
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">🔍</div>
+            <h3 className="text-xl text-white mb-2">No coins found</h3>
+            <p className="text-gray-400 mb-4">
+              Try adjusting your search or filters
+            </p>
+            <button
+              onClick={() => setSearchQuery('')}
+              className="bg-crypto-blue hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors"
+            >
+              Clear search
+            </button>
+          </div>
+        )}
       </main>
 
       {/* Alert Panel */}
@@ -141,7 +181,21 @@ function App() {
         isVisible={showSettings}
         onClose={() => setShowSettings(false)}
         coins={coins}
+        onShowToast={showToast}
       />
+
+      {/* Toast Notifications */}
+      <div className="fixed bottom-4 right-4 z-50 space-y-2">
+        {toasts.map(toast => (
+          <Toast
+            key={toast.id}
+            message={toast.message}
+            type={toast.type}
+            duration={toast.duration}
+            onClose={() => removeToast(toast.id)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
