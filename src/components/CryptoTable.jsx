@@ -1,8 +1,10 @@
 import { formatCurrency, formatLargeNumber } from '../utils/formatters';
 import { TIMEFRAMES } from '../constants/config';
 import PercentageCell from './PercentageCell';
+import TableHeader from './TableHeader';
+import VolumeIndicator from './VolumeIndicator';
 
-export default function CryptoTable({ coins, loading, error }) {
+export default function CryptoTable({ coins, loading, error, sortConfig, onSort }) {
   if (loading && !coins.length) {
     return (
       <div className="text-center py-12">
@@ -22,7 +24,7 @@ export default function CryptoTable({ coins, loading, error }) {
   if (!coins || coins.length === 0) {
     return (
       <div className="text-center py-12 text-gray-400">
-        No coins data available
+        No coins match your filters
       </div>
     );
   }
@@ -30,39 +32,8 @@ export default function CryptoTable({ coins, loading, error }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full">
-        <thead className="sticky top-0 bg-crypto-dark z-10">
-          <tr className="border-b border-gray-800">
-            <th className="text-left py-3 px-4 text-gray-400 font-medium sticky left-0 bg-crypto-dark">
-              #
-            </th>
-            <th className="text-left py-3 px-4 text-gray-400 font-medium sticky left-12 bg-crypto-dark">
-              Coin
-            </th>
-            <th className="text-right py-3 px-4 text-gray-400 font-medium">
-              Price
-            </th>
-            
-            {/* Colonne Timeframes */}
-            {TIMEFRAMES.map(tf => (
-              <th 
-                key={tf.id}
-                className="text-center py-3 px-2 text-gray-400 font-medium text-xs"
-              >
-                {tf.label}
-              </th>
-            ))}
-            
-            <th className="text-right py-3 px-4 text-gray-400 font-medium">
-              Market Cap
-            </th>
-            <th className="text-right py-3 px-4 text-gray-400 font-medium">
-              Volume 24h
-            </th>
-            <th className="text-center py-3 px-4 text-gray-400 font-medium">
-              Action
-            </th>
-          </tr>
-        </thead>
+        <TableHeader sortConfig={sortConfig} onSort={onSort} />
+        
         <tbody>
           {coins.map((coin) => (
             <tr
@@ -96,9 +67,9 @@ export default function CryptoTable({ coins, loading, error }) {
                 {formatCurrency(coin.current_price)}
               </td>
               
-              {/* Timeframe Changes */}
+              {/* Price Changes per Timeframe */}
               {TIMEFRAMES.map(tf => (
-                <td key={tf.id} className="py-3 px-2">
+                <td key={`price-${coin.id}-${tf.id}`} className="py-3 px-2">
                   <PercentageCell 
                     value={coin.priceChanges?.[tf.id]} 
                     timeframe={tf.label}
@@ -111,9 +82,21 @@ export default function CryptoTable({ coins, loading, error }) {
                 {formatLargeNumber(coin.market_cap)}
               </td>
               
-              {/* Volume */}
-              <td className="py-3 px-4 text-right text-gray-300">
-                {formatLargeNumber(coin.total_volume)}
+              {/* Volume 24h */}
+{/* Volume 24h */}
+                <td className="py-3 px-4 text-right">
+                  <VolumeIndicator 
+                    volume={coin.total_volume}
+                    vsAvg={coin.volumeVsAvg}
+                  />
+                </td>
+
+              {/* Volume vs Average */}
+              <td className="py-3 px-4">
+                <PercentageCell 
+                  value={coin.volumeVsAvg} 
+                  timeframe="Vol vs 24h Avg"
+                />
               </td>
               
               {/* Action */}

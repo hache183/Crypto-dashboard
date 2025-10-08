@@ -1,19 +1,14 @@
 import { TIMEFRAMES } from '../constants/config';
 
 /**
- * SnapshotManager - Gestisce gli snapshot temporali dei prezzi
- * 
- * Strategia:
- * - Ogni 5 minuti salva un nuovo snapshot
- * - Mantiene snapshot diversi per timeframes diversi
- * - Aggiorna snapshot in base alla frequenza configurata
+ * SnapshotManager - Gestisce gli snapshot temporali di prezzi e volumi
  */
 class SnapshotManager {
   constructor() {
     // Mappa: coinId -> array di snapshot
     this.snapshots = new Map();
     
-    // Contatore cicli per determinare quando aggiornare ogni timeframe
+    // Contatore cicli
     this.cycleCount = 0;
     
     // Timestamp dell'ultimo snapshot
@@ -23,8 +18,7 @@ class SnapshotManager {
   }
 
   /**
-   * Salva un nuovo snapshot per tutte le coins
-   * @param {Array} coins - Array di oggetti coin da CoinGecko API
+   * Salva un nuovo snapshot per tutte le coins (PRICE + VOLUME)
    */
   saveSnapshot(coins) {
     const timestamp = Date.now();
@@ -36,61 +30,50 @@ class SnapshotManager {
     coins.forEach(coin => {
       const coinId = coin.id;
       
-      // Inizializza array di snapshot per questa coin se non esiste
       if (!this.snapshots.has(coinId)) {
         this.snapshots.set(coinId, []);
       }
 
       const coinSnapshots = this.snapshots.get(coinId);
 
-      // Crea snapshot con prezzo e timestamp
+      // Snapshot con PRICE e VOLUME
       const snapshot = {
         price: coin.current_price,
+        volume: coin.total_volume, // Volume 24h
         timestamp: timestamp,
         cycle: this.cycleCount,
       };
 
-      // Aggiungi snapshot
       coinSnapshots.push(snapshot);
 
-      // Mantieni solo snapshot necessari (ultimi 2016 cicli = 1 settimana)
-      // Questo previene memory leak
-      const maxSnapshots = 2016; // 1 settimana di cicli a 5 minuti
+      // Mantieni max 2016 snapshot (1 settimana)
+      const maxSnapshots = 2016;
       if (coinSnapshots.length > maxSnapshots) {
-        coinSnapshots.shift(); // rimuovi il più vecchio
+        coinSnapshots.shift();
       }
 
       this.snapshots.set(coinId, coinSnapshots);
     });
 
-    console.log(`✅ Snapshot saved for ${coins.length} coins (${this.snapshots.size} total tracked)`);
+    console.log(`✅ Snapshot saved for ${coins.length} coins`);
   }
 
   /**
-   * Calcola la variazione percentuale per un timeframe specifico
-   * @param {string} coinId - ID della coin
-   * @param {number} currentPrice - Prezzo attuale
-   * @param {string} timeframeId - ID del timeframe (es: '5m', '1h')
-   * @returns {number|null} - Variazione percentuale o null se non disponibile
+   * Calcola la variazione percentuale PREZZO per un timeframe
    */
-  calculateChange(coinId, currentPrice, timeframeId) {
+  calculatePriceChange(coinId, currentPrice, timeframeId) {
     const coinSnapshots = this.snapshots.get(coinId);
     
     if (!coinSnapshots || coinSnapshots.length === 0) {
-      return null; // Nessuno snapshot disponibile
-    }
-
-    const timeframe = TIMEFRAMES.find(tf => tf.id === timeframeId);
-    if (!timeframe) {
-      console.warn(`⚠️ Timeframe ${timeframeId} not found`);
       return null;
     }
 
-    // Calcola quanti cicli indietro dobbiamo andare
-    const cyclesBack = timeframe.minutes / 5; // ogni ciclo è 5 minuti
+    const timeframe = TIMEFRAMES.find(tf => tf.id === timeframeId);
+    if (!timeframe) return null;
+
+    const cyclesBack = timeframe.minutes / 5;
     const targetCycle = this.cycleCount - cyclesBack;
 
-    // Trova lo snapshot più vicino al target
     let closestSnapshot = null;
     let minDiff = Infinity;
 
@@ -102,12 +85,10 @@ class SnapshotManager {
       }
     }
 
-    // Se non troviamo snapshot abbastanza vecchi, return null
     if (!closestSnapshot || minDiff > cyclesBack * 0.5) {
-      return null; // Snapshot non abbastanza accurato
+      return null;
     }
 
-    // Calcola variazione percentuale
     const oldPrice = closestSnapshot.price;
     if (oldPrice === 0 || oldPrice === null) return null;
 
@@ -116,18 +97,83 @@ class SnapshotManager {
   }
 
   /**
-   * Calcola tutte le variazioni per una coin
-   * @param {string} coinId - ID della coin
-   * @param {number} currentPrice - Prezzo attuale
-   * @returns {Object} - Oggetto con tutte le variazioni per timeframe
+   * Calcola la variazione percentuale VOLUME per un timeframe
    */
-  calculateAllChanges(coinId, currentPrice) {
+  calculateVolumeChange(coinId, currentVolume, timeframeId) {
+    const coinSnapshots = this.snapshots.get(coinId);
+    
+    if (!coinSnapshots || coinSnapshots.length === 0) {
+      return null;
+    }
+
+    const timeframe = TIMEFRAMES.find(tf => tf.id === timeframeId);
+    if (!timeframe) return null;
+
+    const cyclesBack = timeframe.minutes / 5;
+    const targetCycle = this.cycleCount - cyclesBack;
+
+    let closestSnapshot = null;
+    let minDiff = Infinity;
+
+    for (const snapshot of coinSnapshots) {
+      const diff = Math.abs(snapshot.cycle - targetCycle);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestSnapshot = snapshot;
+      }
+    }
+
+    if (!closestSnapshot || minDiff > cyclesBack * 0.5) {
+      return null;
+    }
+
+    const oldVolume = closestSnapshot.volume;
+    if (oldVolume === 0 || oldVolume === null) return null;
+
+    const change = ((currentVolume - oldVolume) / oldVolume) * 100;
+    return change;
+  }
+
+  /**
+   * Calcola media volume 24h (ultimi 288 cicli)
+   */
+  calculateAvgVolume24h(coinId) {
+    const coinSnapshots = this.snapshots.get(coinId);
+    
+    if (!coinSnapshots || coinSnapshots.length === 0) {
+      return null;
+    }
+
+    // Prendi ultimi 288 snapshot (24h)
+    const last24h = coinSnapshots.slice(-288);
+    
+    if (last24h.length < 10) {
+      return null; // Non abbastanza dati
+    }
+
+    const sum = last24h.reduce((acc, snap) => acc + (snap.volume || 0), 0);
+    return sum / last24h.length;
+  }
+
+  /**
+   * Calcola tutte le variazioni PREZZO per una coin
+   */
+  calculateAllPriceChanges(coinId, currentPrice) {
     const changes = {};
-
     TIMEFRAMES.forEach(timeframe => {
-      changes[timeframe.id] = this.calculateChange(coinId, currentPrice, timeframe.id);
+      changes[timeframe.id] = this.calculatePriceChange(coinId, currentPrice, timeframe.id);
     });
+    return changes;
+  }
 
+  /**
+   * Calcola tutte le variazioni VOLUME per una coin
+   */
+  calculateAllVolumeChanges(coinId, currentVolume) {
+    const changes = {};
+    TIMEFRAMES.forEach(timeframe => {
+      changes[timeframe.id] = this.calculateVolumeChange(coinId, currentVolume, timeframe.id);
+    });
     return changes;
   }
 
@@ -146,7 +192,7 @@ class SnapshotManager {
   }
 
   /**
-   * Reset completo (utile per debug)
+   * Reset completo
    */
   reset() {
     this.snapshots.clear();
@@ -157,8 +203,6 @@ class SnapshotManager {
 
   /**
    * Verifica se abbiamo dati sufficienti per un timeframe
-   * @param {string} timeframeId 
-   * @returns {boolean}
    */
   hasDataForTimeframe(timeframeId) {
     const timeframe = TIMEFRAMES.find(tf => tf.id === timeframeId);
