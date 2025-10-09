@@ -1,98 +1,155 @@
 /**
- * AlertService - Gestisce alerts per variazioni significative
+ * AlertServiceV2 - Sistema alert migliorato con deduplicazione
  */
-class AlertService {
+
+const ALERT_THRESHOLDS = {
+  PRICE_CHANGE_5M: 5,
+  PRICE_CHANGE_15M: 8,
+  VOLUME_SPIKE: 50,
+  VOLUME_DROP: -30,
+};
+
+class AlertServiceV2 {
   constructor() {
     this.alerts = [];
-    this.lastCheck = new Map(); // coinId -> last price checked
+    this.maxAlerts = 50;
+    this.notifiedAlerts = new Set();
   }
 
-  /**
-   * Controlla e genera alerts per coins
-   */
-  checkAlerts(coins, thresholds = { price: 5, volume: 50 }) {
+  checkAlerts(coins) {
     const newAlerts = [];
     const now = Date.now();
 
     coins.forEach(coin => {
-      // Check variazione prezzo 5m
-      const priceChange5m = coin.priceChanges?.['5m'];
-      if (priceChange5m !== null && Math.abs(priceChange5m) >= thresholds.price) {
-        newAlerts.push({
-          id: `${coin.id}-price-${now}`,
-          coinId: coin.id,
-          coinName: coin.name,
-          coinSymbol: coin.symbol,
-          type: 'price',
-          value: priceChange5m,
-          threshold: thresholds.price,
-          timestamp: now,
-          message: `${coin.symbol.toUpperCase()} ${priceChange5m > 0 ? 'surged' : 'dropped'} ${Math.abs(priceChange5m).toFixed(2)}% in 5 minutes!`,
-        });
+      // Alert per variazione 5m significativa
+      const change5m = coin.priceChanges?.['5m'];
+      if (change5m !== null && Math.abs(change5m) >= ALERT_THRESHOLDS.PRICE_CHANGE_5M) {
+        const alertId = `${coin.id}-5m-${Math.floor(now / 60000)}`;
+        
+        if (!this.notifiedAlerts.has(alertId)) {
+          newAlerts.push({
+            id: alertId,
+            coinId: coin.id,
+            coinName: coin.name,
+            coinSymbol: coin.symbol,
+            type: 'price_5m',
+            value: change5m,
+            timestamp: now,
+            severity: Math.abs(change5m) > 10 ? 'high' : 'medium',
+            message: `${coin.symbol.toUpperCase()} ${change5m > 0 ? '🚀' : '💥'} ${Math.abs(change5m).toFixed(2)}% in 5m`,
+          });
+          
+          this.notifiedAlerts.add(alertId);
+        }
       }
 
-      // Check volume anomalo
+      // Alert per variazione 15m significativa
+      const change15m = coin.priceChanges?.['15m'];
+      if (change15m !== null && Math.abs(change15m) >= ALERT_THRESHOLDS.PRICE_CHANGE_15M) {
+        const alertId = `${coin.id}-15m-${Math.floor(now / 300000)}`;
+        
+        if (!this.notifiedAlerts.has(alertId)) {
+          newAlerts.push({
+            id: alertId,
+            coinId: coin.id,
+            coinName: coin.name,
+            coinSymbol: coin.symbol,
+            type: 'price_15m',
+            value: change15m,
+            timestamp: now,
+            severity: Math.abs(change15m) > 15 ? 'high' : 'medium',
+            message: `${coin.symbol.toUpperCase()} ${change15m > 0 ? '📈' : '📉'} ${Math.abs(change15m).toFixed(2)}% in 15m`,
+          });
+          
+          this.notifiedAlerts.add(alertId);
+        }
+      }
+
+      // Alert volume anomalo
       const volumeVsAvg = coin.volumeVsAvg;
-      if (volumeVsAvg !== null && volumeVsAvg >= thresholds.volume) {
-        newAlerts.push({
-          id: `${coin.id}-volume-${now}`,
-          coinId: coin.id,
-          coinName: coin.name,
-          coinSymbol: coin.symbol,
-          type: 'volume',
-          value: volumeVsAvg,
-          threshold: thresholds.volume,
-          timestamp: now,
-          message: `${coin.symbol.toUpperCase()} volume spike: ${volumeVsAvg.toFixed(0)}% above average!`,
-        });
+      if (volumeVsAvg !== null) {
+        if (volumeVsAvg >= ALERT_THRESHOLDS.VOLUME_SPIKE) {
+          const alertId = `${coin.id}-vol-high-${Math.floor(now / 300000)}`;
+          
+          if (!this.notifiedAlerts.has(alertId)) {
+            newAlerts.push({
+              id: alertId,
+              coinId: coin.id,
+              coinName: coin.name,
+              coinSymbol: coin.symbol,
+              type: 'volume_high',
+              value: volumeVsAvg,
+              timestamp: now,
+              severity: volumeVsAvg > 100 ? 'high' : 'medium',
+              message: `${coin.symbol.toUpperCase()} 🔥 Volume spike: +${volumeVsAvg.toFixed(0)}%`,
+            });
+            
+            this.notifiedAlerts.add(alertId);
+          }
+        } else if (volumeVsAvg <= ALERT_THRESHOLDS.VOLUME_DROP) {
+          const alertId = `${coin.id}-vol-low-${Math.floor(now / 300000)}`;
+          
+          if (!this.notifiedAlerts.has(alertId)) {
+            newAlerts.push({
+              id: alertId,
+              coinId: coin.id,
+              coinName: coin.name,
+              coinSymbol: coin.symbol,
+              type: 'volume_low',
+              value: volumeVsAvg,
+              timestamp: now,
+              severity: 'low',
+              message: `${coin.symbol.toUpperCase()} 🧊 Volume drop: ${volumeVsAvg.toFixed(0)}%`,
+            });
+            
+            this.notifiedAlerts.add(alertId);
+          }
+        }
       }
     });
 
-    // Aggiungi nuovi alerts
-    this.alerts = [...newAlerts, ...this.alerts];
-
-    // Mantieni solo ultimi 50 alerts
-    if (this.alerts.length > 50) {
-      this.alerts = this.alerts.slice(0, 50);
-    }
-
     if (newAlerts.length > 0) {
-      console.log('🚨', newAlerts.length, 'new alerts generated');
+      this.alerts = [...newAlerts, ...this.alerts].slice(0, this.maxAlerts);
+      console.log(`🚨 ${newAlerts.length} new alerts generated`);
     }
+
+    // Cleanup vecchie notifiche (oltre 1 ora)
+    const cutoff = now - 3600000;
+    this.notifiedAlerts = new Set(
+      Array.from(this.notifiedAlerts).filter(id => {
+        const parts = id.split('-');
+        const timestamp = parseInt(parts[parts.length - 1]);
+        return timestamp > cutoff / 60000; // Converti a minuti
+      })
+    );
 
     return newAlerts;
   }
 
-  /**
-   * Ottieni tutti gli alerts
-   */
-  getAll() {
-    return this.alerts;
-  }
-
-  /**
-   * Ottieni alerts recenti (ultimi 5 minuti)
-   */
-  getRecent(minutes = 5) {
+  getRecent(minutes = 15) {
     const cutoff = Date.now() - (minutes * 60 * 1000);
     return this.alerts.filter(alert => alert.timestamp > cutoff);
   }
 
-  /**
-   * Rimuovi alert
-   */
-  remove(alertId) {
-    this.alerts = this.alerts.filter(alert => alert.id !== alertId);
+  getAll() {
+    return this.alerts;
   }
 
-  /**
-   * Clear tutti gli alerts
-   */
   clear() {
     this.alerts = [];
+    this.notifiedAlerts.clear();
     console.log('🚨 Alerts cleared');
+  }
+
+  getStats() {
+    return {
+      totalAlerts: this.alerts.length,
+      recentAlerts: this.getRecent(15).length,
+      highSeverity: this.alerts.filter(a => a.severity === 'high').length,
+      mediumSeverity: this.alerts.filter(a => a.severity === 'medium').length,
+      lowSeverity: this.alerts.filter(a => a.severity === 'low').length,
+    };
   }
 }
 
-// Export singleton
-export const alertService = new AlertService();
+export const alertService = new AlertServiceV2();

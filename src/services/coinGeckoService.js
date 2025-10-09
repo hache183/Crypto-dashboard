@@ -5,10 +5,16 @@ class CoinGeckoService {
     this.baseUrl = API_CONFIG.BASE_URL;
     this.requestCache = new Map();
     this.cacheTimeout = 30000; // 30 secondi cache
+    
+    // ✅ Tracking statistiche
+    this.requestCount = 0;
+    this.errorCount = 0;
+    this.lastError = null;
+    this.lastRequestTime = null;
   }
 
   /**
-   * Fetch coins market data con caching
+   * Fetch coins market data con caching e tracking
    */
   async getCoinsMarkets(params = {}) {
     const {
@@ -45,6 +51,7 @@ class CoinGeckoService {
 
       console.log('🌐 Fetching from API:', url.toString());
 
+      this.lastRequestTime = Date.now();
       const response = await fetch(url.toString());
 
       if (!response.ok) {
@@ -59,13 +66,39 @@ class CoinGeckoService {
         timestamp: Date.now(),
       });
 
-      console.log(`✅ Fetched ${data.length} coins`);
+      // ✅ Update stats
+      this.requestCount++;
+      this.lastError = null; // Clear error on success
+
+      console.log(`✅ Fetched ${data.length} coins (Request #${this.requestCount})`);
       return data;
 
     } catch (error) {
+      // ✅ Track errors
+      this.errorCount++;
+      this.lastError = error.message;
+      
       console.error('❌ CoinGecko API Error:', error);
+      console.error(`   Total errors: ${this.errorCount}/${this.requestCount} requests`);
+      
       throw error;
     }
+  }
+
+  /**
+   * ✅ Get service statistics
+   */
+  getStats() {
+    return {
+      requestCount: this.requestCount,
+      errorCount: this.errorCount,
+      successRate: this.requestCount > 0 
+        ? ((this.requestCount - this.errorCount) / this.requestCount * 100).toFixed(1)
+        : '0',
+      lastError: this.lastError,
+      cacheSize: this.requestCache.size,
+      lastRequestTime: this.lastRequestTime,
+    };
   }
 
   /**
@@ -74,6 +107,17 @@ class CoinGeckoService {
   clearCache() {
     this.requestCache.clear();
     console.log('🗑️ Cache cleared');
+  }
+
+  /**
+   * ✅ Reset all stats
+   */
+  resetStats() {
+    this.requestCount = 0;
+    this.errorCount = 0;
+    this.lastError = null;
+    this.lastRequestTime = null;
+    console.log('🗑️ Stats reset');
   }
 }
 

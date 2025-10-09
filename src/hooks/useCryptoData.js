@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { coinGeckoService } from '../services/coinGeckoService';
 import { snapshotManager } from '../services/snapshotManager';
-import { API_CONFIG, FILTER_OPTIONS, DEFAULT_WATCHLIST } from '../constants/config';
+import { API_CONFIG, FILTER_OPTIONS } from '../constants/config';
 import { watchlistManager } from '../services/watchlistManager';
 import { alertService } from '../services/alertService';
+import { persistenceService } from '../services/persistenceService';
 
 export function useCryptoData() {
   const [allCoins, setAllCoins] = useState([]);
@@ -36,7 +37,7 @@ export function useCryptoData() {
         page: 1,
       });
 
-      // Salva snapshot
+      // ✅ IMPORTANTE: Salva snapshot PRIMA di arricchire i dati
       snapshotManager.saveSnapshot(data);
 
       // Arricchisci dati con calcoli snapshot
@@ -46,14 +47,9 @@ export function useCryptoData() {
           coin.current_price
         );
 
-        const volumeChanges = snapshotManager.calculateAllVolumeChanges(
-          coin.id,
-          coin.total_volume
-        );
-
         const avgVolume24h = snapshotManager.calculateAvgVolume24h(coin.id);
         
-        // Volume 5m corrente vs media 24h
+        // Volume corrente vs media 24h
         const volumeVsAvg = avgVolume24h 
           ? ((coin.total_volume - avgVolume24h) / avgVolume24h) * 100
           : null;
@@ -61,7 +57,6 @@ export function useCryptoData() {
         return {
           ...coin,
           priceChanges,
-          volumeChanges,
           avgVolume24h,
           volumeVsAvg,
         };
@@ -71,8 +66,12 @@ export function useCryptoData() {
       setLastUpdate(Date.now());
       setCountdown(API_CONFIG.REFRESH_INTERVAL / 1000);
 
+      // Check alerts DOPO aver arricchito i dati
+      alertService.checkAlerts(enrichedData);
+
       const stats = snapshotManager.getStats();
       console.log('📊 Snapshot Stats:', stats);
+      console.log('🚨 Active Alerts:', alertService.getRecent(15).length);
       
     } catch (err) {
       setError(err.message || 'Failed to fetch crypto data');
@@ -92,7 +91,8 @@ export function useCryptoData() {
     } else if (activeFilter === FILTER_OPTIONS.TOP_100) {
       result = result.slice(0, 100);
     } else if (activeFilter === FILTER_OPTIONS.WATCHLIST) {
-      result = result.filter(coin => DEFAULT_WATCHLIST.includes(coin.id));
+      const watchlist = watchlistManager.getAll();
+      result = result.filter(coin => watchlist.includes(coin.id));
     }
 
     // Apply search query
@@ -179,6 +179,20 @@ export function useCryptoData() {
     }));
   }, []);
 
+  // Reset function
+  const reset = useCallback(() => {
+    if (window.confirm('⚠️ This will delete ALL snapshot data and alerts. Continue?')) {
+      snapshotManager.reset();
+      alertService.clear();
+      coinGeckoService.clearCache();
+      persistenceService.clear();
+      setAllCoins([]);
+      setFilteredCoins([]);
+      console.log('🗑️ Complete reset performed');
+      fetchCoins(true);
+    }
+  }, [fetchCoins]);
+
   const snapshotStats = snapshotManager.getStats();
 
   // Watchlist management
@@ -193,22 +207,18 @@ export function useCryptoData() {
     return watchlistManager.has(coinId);
   }, []);
 
-  // Check alerts after fetch
-  useEffect(() => {
-    if (allCoins.length > 0) {
-      alertService.checkAlerts(allCoins);
-    }
-  }, [allCoins]);
+  // Get alerts
+  const alerts = alertService.getRecent(15);
+  const alertStats = alertService.getStats();
 
-  const alerts = alertService.getRecent(5);
-
-return {
+  return {
     coins: filteredCoins,
     loading,
     error,
     lastUpdate,
     countdown,
     refresh,
+    reset, // ✅ Nuova funzione
     snapshotStats,
     // Filter controls
     activeFilter,
@@ -224,5 +234,6 @@ return {
     watchlistCount: watchlistManager.count(),
     // Alerts
     alerts,
+    alertStats, // ✅ Nuove statistiche alert
   };
 }

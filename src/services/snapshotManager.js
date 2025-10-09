@@ -1,79 +1,113 @@
 import { TIMEFRAMES } from '../constants/config';
+import { persistenceService } from './persistenceService';
 
 /**
- * SnapshotManager - Gestisce gli snapshot temporali di prezzi e volumi
+ * SnapshotManagerV2 - Versione migliorata con persistenza
  */
-class SnapshotManager {
+class SnapshotManagerV2 {
   constructor() {
-    // Mappa: coinId -> array di snapshot
     this.snapshots = new Map();
-    
-    // Contatore cicli
     this.cycleCount = 0;
-    
-    // Timestamp dell'ultimo snapshot
     this.lastSnapshotTime = null;
+    this.failedCycles = 0;
+    this.successfulCycles = 0;
     
-    console.log('📸 SnapshotManager initialized');
+    this.loadState();
+    console.log('📸 SnapshotManagerV2 initialized');
   }
 
-  /**
-   * Salva un nuovo snapshot per tutte le coins (PRICE + VOLUME)
-   */
+  loadState() {
+    try {
+      const state = persistenceService.load('snapshots');
+      if (state) {
+        this.snapshots = new Map(state.snapshots);
+        this.cycleCount = state.cycleCount;
+        this.lastSnapshotTime = state.lastSnapshotTime;
+        this.successfulCycles = state.successfulCycles || 0;
+        this.failedCycles = state.failedCycles || 0;
+        console.log(`✅ Restored ${this.cycleCount} cycles, ${this.snapshots.size} coins`);
+      }
+    } catch (error) {
+      console.error('❌ Error loading snapshots:', error);
+    }
+  }
+
+  saveState() {
+    try {
+      persistenceService.save('snapshots', {
+        snapshots: Array.from(this.snapshots.entries()),
+        cycleCount: this.cycleCount,
+        lastSnapshotTime: this.lastSnapshotTime,
+        successfulCycles: this.successfulCycles,
+        failedCycles: this.failedCycles,
+      });
+    } catch (error) {
+      console.error('❌ Error saving snapshots:', error);
+    }
+  }
+
   saveSnapshot(coins) {
+    if (!Array.isArray(coins) || coins.length === 0) {
+      this.failedCycles++;
+      console.warn('⚠️ Empty coins array, skipping snapshot');
+      return;
+    }
+
     const timestamp = Date.now();
     this.cycleCount++;
     this.lastSnapshotTime = timestamp;
+    this.successfulCycles++;
 
-    console.log(`📸 Saving snapshot #${this.cycleCount} at ${new Date(timestamp).toLocaleTimeString()}`);
+    let savedCount = 0;
 
     coins.forEach(coin => {
-      const coinId = coin.id;
-      
-      if (!this.snapshots.has(coinId)) {
-        this.snapshots.set(coinId, []);
+      if (!coin.id || !coin.current_price || !coin.total_volume) {
+        return;
       }
 
-      const coinSnapshots = this.snapshots.get(coinId);
+      if (!this.snapshots.has(coin.id)) {
+        this.snapshots.set(coin.id, []);
+      }
 
-      // Snapshot con PRICE e VOLUME
-      const snapshot = {
+      const coinSnapshots = this.snapshots.get(coin.id);
+      
+      coinSnapshots.push({
         price: coin.current_price,
-        volume: coin.total_volume, // Volume 24h
-        timestamp: timestamp,
+        volume: coin.total_volume,
+        timestamp,
         cycle: this.cycleCount,
-      };
-
-      coinSnapshots.push(snapshot);
+      });
 
       // Mantieni max 2016 snapshot (1 settimana)
       const maxSnapshots = 2016;
       if (coinSnapshots.length > maxSnapshots) {
-        coinSnapshots.shift();
+        coinSnapshots.splice(0, coinSnapshots.length - maxSnapshots);
       }
 
-      this.snapshots.set(coinId, coinSnapshots);
+      savedCount++;
     });
 
-    console.log(`✅ Snapshot saved for ${coins.length} coins`);
+    this.saveState();
+    
+    console.log(`📸 Cycle #${this.cycleCount}: Saved ${savedCount}/${coins.length} coins`);
   }
 
-  /**
-   * Calcola la variazione percentuale PREZZO per un timeframe
-   */
   calculatePriceChange(coinId, currentPrice, timeframeId) {
     const coinSnapshots = this.snapshots.get(coinId);
     
-    if (!coinSnapshots || coinSnapshots.length === 0) {
+    if (!coinSnapshots || coinSnapshots.length < 2) {
       return null;
     }
 
     const timeframe = TIMEFRAMES.find(tf => tf.id === timeframeId);
     if (!timeframe) return null;
 
-    const cyclesBack = timeframe.minutes / 5;
+    const cyclesBack = Math.floor(timeframe.minutes / 5);
+    if (cyclesBack === 0) return null;
+
     const targetCycle = this.cycleCount - cyclesBack;
 
+    // Trova snapshot più vicino
     let closestSnapshot = null;
     let minDiff = Infinity;
 
@@ -85,133 +119,72 @@ class SnapshotManager {
       }
     }
 
-    if (!closestSnapshot || minDiff > cyclesBack * 0.5) {
+    // Tolleranza: max 20% di differenza nei cicli
+    const tolerance = Math.max(1, cyclesBack * 0.2);
+    if (!closestSnapshot || minDiff > tolerance) {
       return null;
     }
 
     const oldPrice = closestSnapshot.price;
-    if (oldPrice === 0 || oldPrice === null) return null;
+    if (!oldPrice || oldPrice === 0) return null;
 
-    const change = ((currentPrice - oldPrice) / oldPrice) * 100;
-    return change;
+    return ((currentPrice - oldPrice) / oldPrice) * 100;
   }
 
-  /**
-   * Calcola la variazione percentuale VOLUME per un timeframe
-   */
-  calculateVolumeChange(coinId, currentVolume, timeframeId) {
-    const coinSnapshots = this.snapshots.get(coinId);
-    
-    if (!coinSnapshots || coinSnapshots.length === 0) {
-      return null;
-    }
-
-    const timeframe = TIMEFRAMES.find(tf => tf.id === timeframeId);
-    if (!timeframe) return null;
-
-    const cyclesBack = timeframe.minutes / 5;
-    const targetCycle = this.cycleCount - cyclesBack;
-
-    let closestSnapshot = null;
-    let minDiff = Infinity;
-
-    for (const snapshot of coinSnapshots) {
-      const diff = Math.abs(snapshot.cycle - targetCycle);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closestSnapshot = snapshot;
-      }
-    }
-
-    if (!closestSnapshot || minDiff > cyclesBack * 0.5) {
-      return null;
-    }
-
-    const oldVolume = closestSnapshot.volume;
-    if (oldVolume === 0 || oldVolume === null) return null;
-
-    const change = ((currentVolume - oldVolume) / oldVolume) * 100;
-    return change;
+  calculateAllPriceChanges(coinId, currentPrice) {
+    const changes = {};
+    TIMEFRAMES.forEach(tf => {
+      changes[tf.id] = this.calculatePriceChange(coinId, currentPrice, tf.id);
+    });
+    return changes;
   }
 
-  /**
-   * Calcola media volume 24h (ultimi 288 cicli)
-   */
   calculateAvgVolume24h(coinId) {
     const coinSnapshots = this.snapshots.get(coinId);
     
-    if (!coinSnapshots || coinSnapshots.length === 0) {
+    if (!coinSnapshots || coinSnapshots.length < 10) {
       return null;
     }
 
-    // Prendi ultimi 288 snapshot (24h)
+    // Ultimi 288 snapshot (24h a 5min/ciclo)
     const last24h = coinSnapshots.slice(-288);
-    
-    if (last24h.length < 10) {
-      return null; // Non abbastanza dati
-    }
-
     const sum = last24h.reduce((acc, snap) => acc + (snap.volume || 0), 0);
     return sum / last24h.length;
   }
 
-  /**
-   * Calcola tutte le variazioni PREZZO per una coin
-   */
-  calculateAllPriceChanges(coinId, currentPrice) {
-    const changes = {};
-    TIMEFRAMES.forEach(timeframe => {
-      changes[timeframe.id] = this.calculatePriceChange(coinId, currentPrice, timeframe.id);
-    });
-    return changes;
-  }
-
-  /**
-   * Calcola tutte le variazioni VOLUME per una coin
-   */
-  calculateAllVolumeChanges(coinId, currentVolume) {
-    const changes = {};
-    TIMEFRAMES.forEach(timeframe => {
-      changes[timeframe.id] = this.calculateVolumeChange(coinId, currentVolume, timeframe.id);
-    });
-    return changes;
-  }
-
-  /**
-   * Ottieni statistiche snapshot
-   */
   getStats() {
     return {
       totalCoins: this.snapshots.size,
       cycleCount: this.cycleCount,
+      successfulCycles: this.successfulCycles,
+      failedCycles: this.failedCycles,
       lastSnapshotTime: this.lastSnapshotTime,
       avgSnapshotsPerCoin: this.snapshots.size > 0
         ? Array.from(this.snapshots.values()).reduce((sum, arr) => sum + arr.length, 0) / this.snapshots.size
         : 0,
+      dataQuality: this.cycleCount > 0 
+        ? ((this.successfulCycles / this.cycleCount) * 100).toFixed(1) 
+        : '0',
     };
   }
 
-  /**
-   * Reset completo
-   */
+  hasMinimumData(timeframeId) {
+    const timeframe = TIMEFRAMES.find(tf => tf.id === timeframeId);
+    if (!timeframe) return false;
+    
+    const requiredCycles = Math.floor(timeframe.minutes / 5);
+    return this.cycleCount >= requiredCycles;
+  }
+
   reset() {
     this.snapshots.clear();
     this.cycleCount = 0;
     this.lastSnapshotTime = null;
+    this.failedCycles = 0;
+    this.successfulCycles = 0;
+    this.saveState();
     console.log('🗑️ SnapshotManager reset');
-  }
-
-  /**
-   * Verifica se abbiamo dati sufficienti per un timeframe
-   */
-  hasDataForTimeframe(timeframeId) {
-    const timeframe = TIMEFRAMES.find(tf => tf.id === timeframeId);
-    if (!timeframe) return false;
-
-    const requiredCycles = timeframe.minutes / 5;
-    return this.cycleCount >= requiredCycles;
   }
 }
 
-// Export singleton instance
-export const snapshotManager = new SnapshotManager();
+export const snapshotManager = new SnapshotManagerV2();
